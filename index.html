@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heartsteel Interactive</title>
+    <style>
+        body {
+            background-color: #111111; /* Dark background to fit the theme */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #heart {
+            width: 350px; /* Adjust size if needed */
+            cursor: default;
+            transition: transform 0.3s ease, filter 0.3s ease;
+            user-select: none; /* Prevents image dragging */
+        }
+
+        /* Visual glow effect when the user is allowed to click */
+        #heart.clickable {
+            cursor: pointer;
+            filter: drop-shadow(0 0 30px rgba(255, 0, 0, 0.8));
+            transform: scale(1.1);
+        }
+
+        #status {
+            margin-top: 30px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: color 0.3s ease;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <img id="heart" src="heart.jpg" alt="Heartsteel">
+    <div id="status">Hover over the heart!</div>
+
+    <script>
+        // --- 1. Define Audio Arrays ---
+        const triggerSFX = [
+            'Heartsteel_stack_SFX.ogg',
+            'Heartsteel_stack_SFX_2.ogg',
+            'Heartsteel_stack_SFX_3.ogg',
+            'Heartsteel_stack_SFX_4.ogg'
+
+        ];
+
+        const stackSFX = [
+            'Heartsteel_3rd_stack_SFX.ogg',
+            'Heartsteel_3rd_stack_SFX_2.ogg',
+            'Heartsteel_3rd_stack_SFX_3.ogg'
+
+        ];
+
+        const thirdStackSFX = [
+
+            'Heartsteel_trigger_SFX.ogg',
+            'Heartsteel_trigger_SFX_2.ogg',
+            'Heartsteel_trigger_SFX_3.ogg'
+        ];
+
+        // --- 2. Setup Elements and State ---
+        const heartImg = document.getElementById('heart');
+        const statusText = document.getElementById('status');
+
+        let isPlayingSequence = false;
+        let canClick = false;
+        let isWaitingForLoop = false;
+
+        // --- 3. Helper Functions ---
+        function getRandomSound(array) {
+            return array[Math.floor(Math.random() * array.length)];
+        }
+
+        function playSound(file) {
+            const audio = new Audio(file);
+            audio.play().catch(error => {
+                console.log("Audio playback prevented. Click the page once first.", error);
+            });
+        }
+
+        // --- 4. Hover Logic ---
+        heartImg.addEventListener('mouseenter', () => {
+            // Block hover if sequence is playing, waiting for click, or waiting for 3s loop
+            if (isPlayingSequence || canClick || isWaitingForLoop) return;
+
+            isPlayingSequence = true;
+            statusText.innerText = "Charging...";
+            statusText.style.color = "#ffaa00"; // Orange
+
+            // T=0s: Play Trigger 1
+            playSound(getRandomSound(triggerSFX));
+
+            // T=0.5s: Play Trigger 2
+            setTimeout(() => {
+                playSound(getRandomSound(triggerSFX));
+            }, 500);
+
+            // T=1.0s: Play Stack
+            setTimeout(() => {
+                playSound(getRandomSound(stackSFX));
+            }, 1000);
+
+            // T=1.5s: All 3 sounds finished playing (3 sounds * 0.5s each)
+            setTimeout(() => {
+                isPlayingSequence = false;
+                canClick = true;
+                heartImg.classList.add('clickable');
+                statusText.innerText = "CLICK!";
+                statusText.style.color = "#ff0000"; // Red
+            }, 1500);
+        });
+
+        // --- 5. Click Logic ---
+        heartImg.addEventListener('click', () => {
+            if (!canClick) return; // Do nothing if hover sequence isn't finished
+
+            canClick = false;
+            heartImg.classList.remove('clickable');
+            statusText.innerText = "BOOM!";
+            statusText.style.color = "#ff0000";
+
+            // Play the final 3rd stack sound
+            playSound(getRandomSound(thirdStackSFX));
+
+            // Wait 3 seconds, then reset for the next hover
+            isWaitingForLoop = true;
+            
+            setTimeout(() => {
+                isWaitingForLoop = false;
+                statusText.innerText = "Hover over the heart again!";
+                statusText.style.color = "#888888";
+            }, 3000); // 3000ms = 3 seconds
+        });
+    </script>
+</body>
+</html>
