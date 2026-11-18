@@ -6,7 +6,7 @@
     <title>Heartsteel Interactive</title>
     <style>
         body {
-            background-color: #111111; /* Dark background to fit the theme */
+            background-color: #111111;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -16,135 +16,266 @@
             color: white;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            cursor: pointer; 
+        }
+
+        #fireworksCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 1; 
         }
 
         #heart {
-            width: 350px; /* Adjust size if needed */
-            cursor: default;
-            transition: transform 0.3s ease, filter 0.3s ease;
-            user-select: none; /* Prevents image dragging */
-        }
-
-        /* Visual glow effect when the user is allowed to click */
-        #heart.clickable {
-            cursor: pointer;
-            filter: drop-shadow(0 0 30px rgba(255, 0, 0, 0.8));
-            transform: scale(1.1);
+            width: 350px;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s ease;
+            user-select: none;
+            z-index: 10;
+            transform: scale(1.0);
         }
 
         #status {
             margin-top: 30px;
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             font-weight: bold;
             color: #888;
             text-transform: uppercase;
             letter-spacing: 2px;
             transition: color 0.3s ease;
             text-align: center;
+            z-index: 10;
+            text-shadow: 2px 2px 4px #000;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
 
+    <canvas id="fireworksCanvas"></canvas>
+
     <img id="heart" src="heart.jpg" alt="Heartsteel">
-    <div id="status">Hover over the heart!</div>
+    <div id="status">Click anywhere to stack!</div>
 
     <script>
-        // --- 1. Define Audio Arrays ---
+        // --- 1. 音频数组 ---
         const triggerSFX = [
             'Heartsteel_stack_SFX.ogg',
             'Heartsteel_stack_SFX_2.ogg',
             'Heartsteel_stack_SFX_3.ogg',
             'Heartsteel_stack_SFX_4.ogg'
-
         ];
 
-        const stackSFX = [
+        const thirdStackSFX  = [
             'Heartsteel_3rd_stack_SFX.ogg',
             'Heartsteel_3rd_stack_SFX_2.ogg',
             'Heartsteel_3rd_stack_SFX_3.ogg'
-
         ];
 
-        const thirdStackSFX = [
-
+        const stackSFX = [
             'Heartsteel_trigger_SFX.ogg',
             'Heartsteel_trigger_SFX_2.ogg',
             'Heartsteel_trigger_SFX_3.ogg'
         ];
 
-        // --- 2. Setup Elements and State ---
+        // --- 2. 状态与元素 ---
         const heartImg = document.getElementById('heart');
         const statusText = document.getElementById('status');
+        
+        let currentHealth = 1000; // 初始生命值
+        let clickCount = 0;       // 无限叠加
+        
+        let isPlayingSequence = false; 
 
-        let isPlayingSequence = false;
-        let canClick = false;
-        let isWaitingForLoop = false;
+        // --- 3. 画布与粒子系统 (Hanabi) ---
+        const canvas = document.getElementById('fireworksCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
 
-        // --- 3. Helper Functions ---
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor(x, y, color, speed, size) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = Math.random() * speed + 2;
+                this.vx = Math.cos(angle) * velocity;
+                this.vy = Math.sin(angle) * velocity;
+                this.size = Math.random() * size + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.01;
+                this.gravity = 0.05;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += this.gravity;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+
+        function spawnParticles(x, y, count, speed, hue, isCrit = false, isSuperCrit = false) {
+            for (let i = 0; i < count; i++) {
+                const lightness = (isCrit || isSuperCrit) ? 70 : 60;
+                
+                // Super Crit 颜色极速变幻
+                let colorHue = isSuperCrit ? Math.random() * 360 : (hue + (Math.random() * 60 - 30));
+                const color = `hsl(${colorHue}, 100%, ${lightness}%)`;
+                
+                const size = ((isCrit || isSuperCrit) ? 4 : 2) + Math.min(10, clickCount * 0.1);
+                particles.push(new Particle(x, y, color, speed, size));
+            }
+        }
+
+        function createHanabi(x, y, isCrit = false, isSuperCrit = false) {
+            let multiplier = Math.min(20, 1 + (clickCount * 0.3));
+            let baseCount = (isCrit || isSuperCrit) ? 60 : 30; 
+            let speed = ((isCrit || isSuperCrit) ? 8 : 5) * multiplier;
+            let baseHue = (clickCount * 15) % 360;
+
+            if (isSuperCrit) {
+                multiplier = 15;
+                baseCount = 100;
+                speed = 12;
+                baseHue = Math.random() * 360;
+            }
+
+            const particleCount = Math.floor(baseCount * multiplier);
+            spawnParticles(x, y, particleCount, speed, baseHue, isCrit, isSuperCrit);
+        }
+
+        function animateParticles() {
+            ctx.fillStyle = 'rgba(17, 17, 17, 0.2)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'lighter'; 
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            ctx.globalCompositeOperation = 'source-over';
+            requestAnimationFrame(animateParticles);
+        }
+        
+        animateParticles();
+
+        // --- 4. 辅助函数 ---
         function getRandomSound(array) {
             return array[Math.floor(Math.random() * array.length)];
         }
 
         function playSound(file) {
             const audio = new Audio(file);
-            audio.play().catch(error => {
-                console.log("Audio playback prevented. Click the page once first.", error);
-            });
+            audio.play().catch(error => console.log("请先点击页面启用音频"));
         }
 
-        // --- 4. Hover Logic ---
-        heartImg.addEventListener('mouseenter', () => {
-            // Block hover if sequence is playing, waiting for click, or waiting for 3s loop
-            if (isPlayingSequence || canClick || isWaitingForLoop) return;
-
+        // --- 5. 核心点击逻辑 ---
+        document.addEventListener('click', (e) => {
+            if (isPlayingSequence) return;
             isPlayingSequence = true;
-            statusText.innerText = "Charging...";
-            statusText.style.color = "#ffaa00"; // Orange
 
-            // T=0s: Play Trigger 1
-            playSound(getRandomSound(triggerSFX));
+            // 1. 数据更新 (复利叠加：每次增加当前血量的 3%)
+            clickCount++;
+            currentHealth = currentHealth + (currentHealth * 0.03);
 
-            // T=0.5s: Play Trigger 2
+            // 2. 判定普通暴击 (1000血=10%，封顶 50%)
+            let critRate = Math.min(0.50, currentHealth / 10000); 
+            const isCrit = Math.random() < critRate;
+
+            // ==========================================
+            // 3. 【核心修改】超级暴击概率 (1000血=0.1%，2000血=0.2%，封顶 5%)
+            // 公式：当前血量 / 1,000,000
+            // ==========================================
+            let superCritRate = Math.min(0.05, currentHealth / 1000000);
+            const isSuperCrit = Math.random() < superCritRate;
+
+            // 4. 更新 UI 文字
+            const critText = `Crit: ${Math.round(critRate * 100)}%`;
+            const scText = `SCrit: ${(superCritRate * 100).toFixed(2)}%`;
+            const displayHealth = Math.floor(currentHealth).toLocaleString();
+            
+            if (isSuperCrit) {
+                statusText.innerHTML = `<span style="color:#ff00ff; font-size:1.5rem;">[SUPER CRIT!!!]</span><br>HP: ${displayHealth} | Stacks: ${clickCount}<br>${critText} | ${scText}`;
+            } else if (isCrit) {
+                statusText.innerHTML = `[CRIT!] HP: ${displayHealth} | Stacks: ${clickCount}<br>${critText} | ${scText}`;
+                statusText.style.color = "#ffff00"; 
+            } else {
+                statusText.innerHTML = `HP: ${displayHealth} | Stacks: ${clickCount}<br>${critText} | ${scText}`;
+                statusText.style.color = "#ff0000";
+            }
+
+            // 5. 触发基础烟花
+            createHanabi(e.clientX, e.clientY, isCrit, isSuperCrit);
+
+            if (isCrit && !isSuperCrit) {
+                // 普通暴击专属全屏效果
+                createHanabi(canvas.width / 2, canvas.height / 2, true);
+                const extraFireworks = Math.floor(Math.random() * 2) + 4;
+                for (let i = 0; i < extraFireworks; i++) {
+                    setTimeout(() => {
+                        createHanabi(Math.random() * canvas.width, Math.random() * canvas.height, true);
+                    }, i * 150); 
+                }
+            }
+
+            // 6. 超级暴击专属：10秒内随机引爆100次
+            if (isSuperCrit) {
+                for (let i = 0; i < 50; i++) {
+                    setTimeout(() => {
+                        const randX = Math.random() * canvas.width;
+                        const randY = Math.random() * canvas.height;
+                        createHanabi(randX, randY, true, true);
+                    }, i * 150);
+                }
+            }
+
+            // 7. 更新照片发光和色相
+            const hueRotate = (clickCount * 10) % 360; 
+            const glow = Math.min(150, 20 + (clickCount * 2)); 
+            heartImg.style.filter = `hue-rotate(${hueRotate}deg) drop-shadow(0 0 ${glow}px rgba(255,0,0,0.8))`;
+
+            heartImg.style.transform = `scale(1.0)`;
+
+            // --- 阶段 2：点击后随机等待 1-2 秒 ---
+            const randomWait = Math.floor(Math.random() * 1000) + 1000; 
+
             setTimeout(() => {
                 playSound(getRandomSound(triggerSFX));
-            }, 500);
+                heartImg.style.transform = `scale(1.1)`;
 
-            // T=1.0s: Play Stack
-            setTimeout(() => {
-                playSound(getRandomSound(stackSFX));
-            }, 1000);
+                setTimeout(() => {
+                    playSound(getRandomSound(triggerSFX));
+                    heartImg.style.transform = `scale(1.2)`;
+                }, 500);
 
-            // T=1.5s: All 3 sounds finished playing (3 sounds * 0.5s each)
-            setTimeout(() => {
-                isPlayingSequence = false;
-                canClick = true;
-                heartImg.classList.add('clickable');
-                statusText.innerText = "CLICK!";
-                statusText.style.color = "#ff0000"; // Red
-            }, 1500);
-        });
+                setTimeout(() => {
+                    playSound(getRandomSound(thirdStackSFX));
+                    heartImg.style.transform = `scale(1.3)`;
+                    
+                    isPlayingSequence = false; 
+                    
+                }, 1000);
 
-        // --- 5. Click Logic ---
-        heartImg.addEventListener('click', () => {
-            if (!canClick) return; // Do nothing if hover sequence isn't finished
-
-            canClick = false;
-            heartImg.classList.remove('clickable');
-            statusText.innerText = "BOOM!";
-            statusText.style.color = "#ff0000";
-
-            // Play the final 3rd stack sound
-            playSound(getRandomSound(thirdStackSFX));
-
-            // Wait 3 seconds, then reset for the next hover
-            isWaitingForLoop = true;
-            
-            setTimeout(() => {
-                isWaitingForLoop = false;
-                statusText.innerText = "Hover over the heart again!";
-                statusText.style.color = "#888888";
-            }, 3000); // 3000ms = 3 seconds
+            }, randomWait,playSound(getRandomSound(stackSFX))); 
         });
     </script>
 </body>
